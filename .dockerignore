@@ -1,0 +1,11 @@
+node_modules
+.next
+.git
+.env*
+deploy/.env.production
+data
+coverage
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.telegram-offset

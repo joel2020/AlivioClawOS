@@ -1,0 +1,158 @@
+services:
+  clawbot-data-init:
+    image: alpine:3.20
+    restart: "no"
+    command: ["sh", "-c", "mkdir -p /app/data && chown -R 1001:1001 /app/data"]
+    volumes:
+      - clawbot-runtime:/app/data
+
+  clawbot-db-migrate:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: worker
+    restart: "no"
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgres://clawbot:${POSTGRES_PASSWORD:-clawbot_change_me}@postgres:5432/clawbot}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+    command: ["npm", "run", "db:bootstrap"]
+    volumes:
+      - clawbot-runtime:/app/data
+    depends_on:
+      clawbot-data-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+
+  clawbot:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: runner
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgres://clawbot:${POSTGRES_PASSWORD:-clawbot_change_me}@postgres:5432/clawbot}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      REDIS_URL: redis://redis:6379
+      N8N_BASE_URL: http://n8n:5678
+      N8N_OUTBOUND_SEND_WEBHOOK_URL: ${N8N_OUTBOUND_SEND_WEBHOOK_URL:-}
+    ports:
+      - "3000:3000"
+    volumes:
+      - clawbot-runtime:/app/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://127.0.0.1:3000/api/v1/health >/dev/null || exit 1"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    depends_on:
+      clawbot-data-init:
+        condition: service_completed_successfully
+      clawbot-db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  clawbot-worker:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: worker
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgres://clawbot:${POSTGRES_PASSWORD:-clawbot_change_me}@postgres:5432/clawbot}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      REDIS_URL: redis://redis:6379
+      N8N_BASE_URL: http://n8n:5678
+      N8N_AGENT_JOB_WEBHOOK_URL: ${N8N_AGENT_JOB_WEBHOOK_URL:-}
+      N8N_OUTBOUND_SEND_WEBHOOK_URL: ${N8N_OUTBOUND_SEND_WEBHOOK_URL:-}
+      AGENT_ZERO_WEBHOOK_URL: ${AGENT_ZERO_WEBHOOK_URL:-}
+      CLAWBOT_WORKER_ID: ${CLAWBOT_WORKER_ID:-hostinger-worker-1}
+    volumes:
+      - clawbot-runtime:/app/data
+    depends_on:
+      clawbot-data-init:
+        condition: service_completed_successfully
+      clawbot-db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+      n8n:
+        condition: service_started
+
+  clawbot-telegram:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+      target: telegram-poller
+    restart: unless-stopped
+    env_file:
+      - .env.production
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:-postgres://clawbot:${POSTGRES_PASSWORD:-clawbot_change_me}@postgres:5432/clawbot}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      REDIS_URL: redis://redis:6379
+      TELEGRAM_POLL_MS: ${TELEGRAM_POLL_MS:-1000}
+      TELEGRAM_OFFSET_FILE: /app/data/telegram-offset
+    volumes:
+      - clawbot-runtime:/app/data
+    depends_on:
+      clawbot-data-init:
+        condition: service_completed_successfully
+      clawbot-db-migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-clawbot}
+      POSTGRES_USER: ${POSTGRES_USER:-clawbot}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-clawbot_change_me}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-clawbot} -d ${POSTGRES_DB:-clawbot}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+
+  n8n:
+    image: n8nio/n8n:latest
+    restart: unless-stopped
+    environment:
+      N8N_HOST: ${N8N_HOST:-n8n.localhost}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: ${N8N_PROTOCOL:-https}
+      WEBHOOK_URL: ${N8N_WEBHOOK_URL:-https://n8n.localhost/}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE:-UTC}
+    ports:
+      - "5678:5678"
+    volumes:
+      - n8n-data:/home/node/.n8n
+
+volumes:
+  postgres-data:
+  redis-data:
+  n8n-data:
+  clawbot-runtime:

@@ -1,0 +1,60 @@
+{
+  "name": "Clawbot Agent Job Dry Run",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clawbot-agent-job",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-agent-job",
+      "name": "Agent Job Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const job = $json.job || $json; return [{ json: { jobId: job.id, status: 'completed', output: { mode: 'n8n_dry_run', title: job.title, receivedAt: new Date().toISOString(), input: job.input || {} } } }];"
+      },
+      "id": "build-callback",
+      "name": "Build Callback Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [500, 300]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{$env.CLAWBOT_PUBLIC_URL || 'http://clawbot:3000'}}/api/v1/integrations/n8n/agent-job-callback",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            { "name": "x-clawbot-worker-key", "value": "={{$env.CLAWBOT_WORKER_API_KEY}}" },
+            { "name": "x-clawbot-worker-id", "value": "n8n-dry-run" }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{$json}}",
+        "options": {}
+      },
+      "id": "callback-clawbot",
+      "name": "Callback Clawbot",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [760, 300]
+    }
+  ],
+  "connections": {
+    "Agent Job Webhook": {
+      "main": [[{ "node": "Build Callback Payload", "type": "main", "index": 0 }]]
+    },
+    "Build Callback Payload": {
+      "main": [[{ "node": "Callback Clawbot", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false
+}

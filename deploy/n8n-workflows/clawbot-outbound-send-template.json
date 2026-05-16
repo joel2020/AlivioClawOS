@@ -1,0 +1,35 @@
+{
+  "name": "Clawbot Approved Outbound Send Template",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "clawbot-outbound-send",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "id": "webhook-outbound",
+      "name": "Approved Outbound Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300]
+    },
+    {
+      "parameters": {
+        "jsCode": "const msg = $json; return [{ json: { ok: true, mode: 'dry_run', outboundMessageId: msg.id, to: msg.to, subject: msg.subject, sentAt: new Date().toISOString(), note: 'Replace this Code node with Gmail/Postmark/SendGrid before real sending.' } }];"
+      },
+      "id": "dry-run-send",
+      "name": "Dry Run Sender",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 300]
+    }
+  ],
+  "connections": {
+    "Approved Outbound Webhook": {
+      "main": [[{ "node": "Dry Run Sender", "type": "main", "index": 0 }]]
+    }
+  },
+  "settings": { "executionOrder": "v1" },
+  "active": false
+}
